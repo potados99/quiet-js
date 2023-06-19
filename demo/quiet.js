@@ -6,17 +6,21 @@ class Quiet {
     this.audioContext = audioContext;
     this.profile = profile;
 
+    this.decode = window['utils'].decode;
+    this.concatenate = window['utils'].concatenate;
     this.encodeForTransmit = window['utils'].encodeForTransmit;
     this.resumeIfSuspended = window['utils'].resumeIfSuspended;
+
+    this.incommingBuffers = [];
   }
 
   async init() {
-    const { module, instance } = await getQuietAssembly();
+    const {module, instance} = await getQuietAssembly();
 
     this.instance = instance;
 
     if (typeof window !== 'undefined') {
-      const { audioWorklet } = this.audioContext;
+      const {audioWorklet} = this.audioContext;
       await audioWorklet.addModule(getWorkletProcessorUri());
 
       this.quietProcessorNode = new AudioWorkletNode(this.audioContext, 'quiet-receiver-worklet', {
@@ -33,7 +37,7 @@ class Quiet {
     return this;
   }
 
-  async transmit({ payload, clampFrame }) {
+  async transmit({payload, clampFrame}) {
     (
       await new Transmitter(this.audioContext, this.instance)
         .selectProfile(this.profile, clampFrame)
@@ -48,11 +52,38 @@ class Quiet {
         echoCancellation: false,
       },
     });
+
+    const onMessage = (e) => {
+      const currentFrame = new Uint8Array(e.data.value);
+
+      let messageStart = 0;
+      let messageEnd = 0;
+
+      for (let i = 0; i < currentFrame.byteLength - 1; i++) {
+        if (currentFrame[i] === 0xDE && currentFrame[i+1] === 0xAD) {
+          // message start
+          this.incommingBuffers = [];
+          messageStart = i+2;
+        } else if (currentFrame[i] === 0xBE && currentFrame[i+1] === 0xEF) {
+          // message end
+          this.incommingBuffers.push(currentFrame.slice(messageStart, i));
+          messageEnd = i;
+
+          const buffer = this.concatenate(Int8Array, ...this.incommingBuffers).buffer;
+          const value = this.decode(buffer);
+
+          onReceive(value);
+        }
+      }
+
+      if (messageEnd === 0) {
+        this.incommingBuffers.push(currentFrame.slice(messageStart));
+      }
+    }
+
     const audioInput = this.audioContext.createMediaStreamSource(this.audioStream);
-    audioInput
-      .connect(this.quietProcessorNode)
-      .port
-      .onmessage = (e) => onReceive(e.data);
+    audioInput.connect(this.quietProcessorNode).port.onmessage = onMessage;
+
     this.resumeIfSuspended(this.audioContext);
   }
 }
@@ -75,7 +106,7 @@ class Transmitter {
   selectProfile(profile, clampFrame) {
     const stack = this.instance.exports.stackSave();
 
-    const cProfiles = this.allocateStringOnStack(this.instance, JSON.stringify({ profile }));
+    const cProfiles = this.allocateStringOnStack(this.instance, JSON.stringify({profile}));
     const cProfile = this.allocateStringOnStack(this.instance, 'profile');
 
     const quietEncoderOptions = this
@@ -414,8 +445,27 @@ function chunkBuffer(buffer, chunkSize) {
   return res;
 }
 
-function encodeForTransmit(str) {
-  return new TextEncoder().encode(str);
+function concatenate(resultConstructor, ...arrays) {
+  let totalLength = 0;
+  for (const arr of arrays) {
+    totalLength += arr.length;
+  }
+  const result = new resultConstructor(totalLength);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
+}
+
+function encodeForTransmit(payload) {
+  return concatenate(
+      Uint8Array,
+      Uint8Array.of(0xDE, 0xAD),
+      new TextEncoder().encode(payload),
+      Uint8Array.of(0xBE, 0xEF)
+  );
 }
 
 function encode(str) {
@@ -455,6 +505,7 @@ return {
   waitUntil,
   resumeIfSuspended,
   chunkBuffer,
+  concatenate,
   encodeForTransmit,
   encode,
   decode,
@@ -657,10 +708,10 @@ class ReceiverWorklet extends AudioWorkletProcessor {
         const HEAPU8 = new Int8Array(this.instance.exports.memory.buffer);
 
         const slice = HEAPU8.slice(this.frame, this.frame + read);
-        const value = this.decode(slice.buffer);
+
         this.port.postMessage({
           type: 'payload',
-          value,
+          value: slice
         });
       }
     }
@@ -6352,7 +6403,7 @@ AAAAAAAAAAAAALjGAAA=
   }
 
   function restore(encoded) {
-    var binaryString =  asciiToBinary(encoded);
+    var binaryString = asciiToBinary(encoded);
     var bytes = new Uint8Array(binaryString.length);
     for (var i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
