@@ -82,7 +82,8 @@ class Quiet {
     }
 
     const audioInput = this.audioContext.createMediaStreamSource(this.audioStream);
-    audioInput.connect(this.quietProcessorNode).port.onmessage = onMessage;
+    audioInput.connect(this.quietProcessorNode);
+    this.quietProcessorNode.port.onmessage = onMessage;
 
     this.resumeIfSuspended(this.audioContext);
   }
@@ -634,7 +635,8 @@ class RingBuffer {
   }
 } // class RingBuffer
 
-return RingBuffer;    `
+return RingBuffer;    
+`
     },
   ];
 }
