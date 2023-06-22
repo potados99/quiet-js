@@ -8,6 +8,10 @@ if (urlParams.get('profile') != null && quietProfiles[urlParams.get('profile')] 
   alert(`[${urlParams.get('profile')}] 프로파일이 없어 cable-64k가 사용됩니다.`);
 }
 
+function decode(buf) {
+  return [...new Uint8Array(buf)].map((x) => String.fromCharCode(x)).join('');
+}
+
 async function main() {
   const quiet = await new Quiet(
     audioContext,
@@ -38,13 +42,13 @@ async function main() {
   function sendJson(json) {
     quiet.transmit({
       clampFrame: false,
-      payload: JSON.stringify(json)
+      payload: new TextEncoder().encode(JSON.stringify(json)),
     });
   }
 
   async function startReceiving() {
     await quiet.receive((message) => {
-      const parsed = JSON.parse(message);
+      const parsed = JSON.parse(decode(message));
       const {type} = parsed;
 
       switch (type) {

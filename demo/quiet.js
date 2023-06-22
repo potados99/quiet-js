@@ -1,3 +1,6 @@
+const log = (...args) => console.log(...args);
+const error = (...args) => console.error(...args);
+
 const scopedEval = (scope, script) => Function('"use strict"; ' + script).bind(scope)();
 getSharedScripts().forEach(s => window[s.name] = scopedEval(this, s.content));
 
@@ -5,13 +8,6 @@ class Quiet {
   constructor(audioContext, profile) {
     this.audioContext = audioContext;
     this.profile = profile;
-
-    this.decode = window['utils'].decode;
-    this.concatenate = window['utils'].concatenate;
-    this.encodeForTransmit = window['utils'].encodeForTransmit;
-    this.resumeIfSuspended = window['utils'].resumeIfSuspended;
-
-    this.incommingBuffers = [];
   }
 
   async init() {
@@ -41,51 +37,18 @@ class Quiet {
     (
       await new Transmitter(this.audioContext, this.instance)
         .selectProfile(this.profile, clampFrame)
-        .transmit(this.encodeForTransmit(payload))
+        .transmit(payload)
     )
       .destroy();
   }
 
   async receive(onReceive) {
-    this.audioStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,
-      },
-    });
-
-    const onMessage = (e) => {
-      const currentFrame = new Uint8Array(e.data.value);
-
-      let messageStart = 0;
-      let messageEnd = 0;
-
-      for (let i = 0; i < currentFrame.byteLength - 1; i++) {
-        if (currentFrame[i] === 0xDE && currentFrame[i+1] === 0xAD) {
-          // message start
-          this.incommingBuffers = [];
-          messageStart = i+2;
-        } else if (currentFrame[i] === 0xBE && currentFrame[i+1] === 0xEF) {
-          // message end
-          this.incommingBuffers.push(currentFrame.slice(messageStart, i));
-          messageEnd = i;
-
-          const buffer = this.concatenate(Int8Array, ...this.incommingBuffers).buffer;
-          const value = this.decode(buffer);
-
-          onReceive(value);
-        }
-      }
-
-      if (messageEnd === 0) {
-        this.incommingBuffers.push(currentFrame.slice(messageStart));
-      }
-    }
-
-    const audioInput = this.audioContext.createMediaStreamSource(this.audioStream);
-    audioInput.connect(this.quietProcessorNode);
-    this.quietProcessorNode.port.onmessage = onMessage;
-
-    this.resumeIfSuspended(this.audioContext);
+    await new Receiver(
+      this.audioContext,
+      await getSpeakerStream(),
+      this.quietProcessorNode,
+      onReceive
+    ).receive();
   }
 }
 
@@ -98,6 +61,7 @@ class Transmitter {
     this.sampleBufferSize = window['utils'].sampleBufferSize;
     this.resumeIfSuspended = window['utils'].resumeIfSuspended;
     this.chunkBuffer = window['utils'].chunkBuffer;
+    this.concatenate = window['utils'].concatenate;
     this.allocateArrayOnStack = window['utils'].allocateArrayOnStack;
     this.allocateStringOnStack = window['utils'].allocateStringOnStack;
     this.mallocArray = window['utils'].mallocArray;
@@ -137,12 +101,12 @@ class Transmitter {
 
     this.resumeIfSuspended(this.audioContext);
 
-    const payload = this.chunkBuffer(buf, this.frameLength);
+    const fragments = this.buildFragments(buf);
 
     let t = this.audioContext.currentTime;
-    for (const frame of payload) {
-      const framePointer = this.allocateArrayOnStack(this.instance, new Uint8Array(frame));
-      this.instance.exports.quiet_encoder_send(this.encoder, framePointer, frame.byteLength);
+    for (const fragment of fragments) {
+      const framePointer = this.allocateArrayOnStack(this.instance, new Uint8Array(fragment));
+      this.instance.exports.quiet_encoder_send(this.encoder, framePointer, fragment.byteLength);
       const written = this.instance.exports.quiet_encoder_emit(
         this.encoder,
         this.samples.pointer,
@@ -164,11 +128,47 @@ class Transmitter {
       audioBufferNode.connect(this.audioContext.destination);
       audioBufferNode.start(t);
       t += audioBuffer.duration;
+
+      await this.waitUntil(audioBuffer.duration);
     }
 
     this.instance.exports.stackRestore(stack);
-    await this.waitUntil(t - this.audioContext.currentTime);
+
     return this;
+  }
+
+  buildFragments(buf) {
+    const payloads = this.chunkBuffer(buf, this.frameLength-4/*header*/);
+
+    const fragmentIdentifier = new Date().getTime() & 0xFFFF;
+
+    const fragments = [];
+
+    let index = 0;
+    let offset = 0;
+
+    for (const fragmentPayload of payloads) {
+      const moreFragments = (index < payloads.length-1 ? 1 : 0) << 15;
+      const fragmentOffset = offset;
+      const flagAndOffset = moreFragments | fragmentOffset;
+
+      const header = Uint8Array.of(
+        (fragmentIdentifier & 0xFF00) >> 8,
+        (fragmentIdentifier & 0x00FF) >> 0,
+        (flagAndOffset & 0xFF00) >> 8,
+        (flagAndOffset & 0x00FF) >> 0
+      );
+
+      const fragment = this.concatenate(Uint8Array, header, fragmentPayload);
+      fragments.push(fragment);
+
+      log(`Built fragment packet at offset ${fragmentOffset}`);
+
+      index++;
+      offset += fragmentPayload.byteLength;
+    }
+
+    return fragments;
   }
 
   destroy() {
@@ -179,6 +179,141 @@ class Transmitter {
     }
     return this;
   }
+}
+
+class Receiver {
+  constructor(audioContext, stream, quietProcessorNode, onReceive) {
+    this.audioContext = audioContext;
+    this.stream = stream;
+    this.quietProcessorNode = quietProcessorNode;
+    this.onReceive = onReceive;
+
+    this.resumeIfSuspended = window['utils'].resumeIfSuspended;
+    this.concatenate = window['utils'].concatenate;
+
+    this.fragments = new Map();
+  }
+
+  async receive() {
+    const audioStream = this.stream || await getMicStream();
+
+    const audioInput = this.audioContext.createMediaStreamSource(audioStream);
+    audioInput.connect(this.quietProcessorNode);
+    this.quietProcessorNode.port.onmessage = (e) => this.onMessage(e);
+
+    this.resumeIfSuspended(this.audioContext);
+  }
+
+  onMessage(e) {
+    const frameData = new Uint8Array(e.data.value);
+    const packet = this.parsePacket(frameData);
+
+    this.saveFragment(packet);
+
+    if (packet.offset === 0 && !packet.more) {
+      log('single non fragmented packet arrived.');
+    }
+    else if (packet.offset === 0 && packet.more) {
+      log('start of fragmented packets arrived.');
+    }
+    else if (packet.offset > 0 && !packet.more) {
+      log('end of fragmented packets arrived.');
+    }
+    else if (packet.offset > 0 && packet.more) {
+      log('middle of fragmented packets arrived');
+    }
+
+    const readyToEmit = !packet.more;
+
+    if (readyToEmit) {
+      try {
+        const assembledData = this.reassembleFragments(packet.identifier);
+        this.onReceive(assembledData);
+      } catch (e) {
+        error(e);
+      }
+    }
+  }
+
+  parsePacket(frameData)  {
+    const header = frameData.slice(0, 4); // first four bytes are header.
+    const body = frameData.slice(4);
+
+    const fragmentIdentifier = new DataView(header.slice(0, 2).buffer, 0).getUint16(0); // first two bytes represent identifier
+    const flagAndOffset = new DataView(header.slice(2, 4).buffer, 0).getUint16(0); // last two bytes: 1 bit for flag, others for offset.
+
+    const moreFragments = (flagAndOffset & 0b1000_0000_0000_0000) >> 15;
+    const fragmentOffset = flagAndOffset & 0b0111_1111_1111_1111;
+
+    return {
+      identifier: fragmentIdentifier,
+      more: moreFragments > 0,
+      offset: fragmentOffset,
+      data: body
+    };
+  }
+
+  saveFragment(packet) {
+    this.fragments[packet.identifier] = this.fragments[packet.identifier] || [];
+
+    const thisFragments = this.fragments[packet.identifier];
+
+    if (thisFragments.length === 0) {
+      thisFragments.push(packet);
+    } else {
+      const lastFragment = thisFragments[thisFragments.length-1];
+      const nextFragmentStartsAt = lastFragment ? (lastFragment.offset + lastFragment.data.byteLength) : 0;
+
+      if (packet.offset !== nextFragmentStartsAt) {
+        error(`Expected offset at ${nextFragmentStartsAt}, but received ${packet.offset}.`);
+        return;
+      }
+
+      thisFragments.push(packet);
+    }
+  };
+
+  reassembleFragments(identifier) {
+    const thisFragments = this.fragments[identifier] || [];
+    this.fragments.delete(identifier);
+
+    const data = [];
+    let offset = 0;
+
+    for (const fragment of thisFragments) {
+      if (offset !== fragment.offset) {
+        throw new Error(`Missing packet: expected packet at offset ${offset}`);
+      }
+      data.push(fragment.data);
+      offset = fragment.offset + fragment.data.byteLength;
+    }
+
+    return this.concatenate(Uint8Array, ...data).buffer;
+  };
+}
+
+async function getMicStream() {
+  return await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: false,
+    },
+  });
+}
+
+async function getSpeakerStream() {
+  const speaker = new MediaStream();
+
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: true ,
+    audio: true
+  });
+
+  speaker.addTrack(stream.getAudioTracks()[0].clone());
+  // stopping and removing the video track to enhance the performance
+  stream.getVideoTracks()[0].stop();
+  stream.removeTrack(stream.getVideoTracks()[0]);
+
+  return speaker;
 }
 
 const quietProfiles = {
@@ -279,7 +414,7 @@ const quietProfiles = {
     checksum_scheme: "crc32",
     inner_fec_scheme: "v27p23",
     outer_fec_scheme: "rs8",
-    frame_length: 7500,
+    frame_length: 1500,
     modulation: {
       center_frequency: 10200,
       gain: 0.09
@@ -460,21 +595,8 @@ function concatenate(resultConstructor, ...arrays) {
   return result;
 }
 
-function encodeForTransmit(payload) {
-  return concatenate(
-      Uint8Array,
-      Uint8Array.of(0xDE, 0xAD),
-      new TextEncoder().encode(payload),
-      Uint8Array.of(0xBE, 0xEF)
-  );
-}
-
 function encode(str) {
   return str.split('').map((x) => x.charCodeAt(0));
-}
-
-function decode(buf) {
-  return [...new Uint8Array(buf)].map((x) => String.fromCharCode(x)).join('');
 }
 
 function allocateArrayOnStack(instance, arr) {
@@ -507,9 +629,7 @@ return {
   resumeIfSuspended,
   chunkBuffer,
   concatenate,
-  encodeForTransmit,
   encode,
-  decode,
   allocateArrayOnStack,
   allocateStringOnStack,
   mallocArray
@@ -654,12 +774,12 @@ class ReceiverWorklet extends AudioWorkletProcessor {
     this.sampleBufferSize = this['utils'].sampleBufferSize;
     this.allocateStringOnStack = this['utils'].allocateStringOnStack;
     this.mallocArray = this['utils'].mallocArray;
-    this.decode = this['utils'].decode;
 
     this.quietModule = quietModule;
     this.profile = profile;
     this.sampleRate = sampleRate;
     this.inputRingBuffer = new this.RingBuffer(this.sampleBufferSize, 1);
+
     this.init();
   }
 
@@ -697,7 +817,6 @@ class ReceiverWorklet extends AudioWorkletProcessor {
     if (this.inputRingBuffer.framesAvailable >= this.sampleBufferSize) {
       this.inputRingBuffer.pull([this.samples.view]);
 
-      this.bufferIndex = 0;
       this.instance.exports.quiet_decoder_consume(
         this.decoder, this.samples.pointer, this.sampleBufferSize,
       );
