@@ -134,7 +134,6 @@ const {Socket} = (function () {
       this.uplink = new Stream();
 
       this._name = name;
-      this._timeout = timeout || 5000;
       this._windowSize = windowSize || 4;
 
       this._sendBuffer = new WindowBuffer(this._windowSize);
@@ -185,17 +184,19 @@ const {Socket} = (function () {
       clearTimeout(this._timeoutId);
 
       const send = () => {
-        this._sendWindow();
+        const bytesSent = this._sendWindow();
         this._timeoutId = setTimeout(() => {
           this._log(`timeout resend window`);
           send();
-        },this._timeout);
+        },5000 + Math.floor(bytesSent / 3)/*about 1 millisecond per 3 bytes*/);
       };
 
       send();
     }
 
     _sendWindow() {
+      let bytesSent = 0;
+
       this._sendBuffer.forEachWindow((item, index) => {
         if (item == null) {
           return false;
@@ -213,26 +214,30 @@ const {Socket} = (function () {
         if (itemIsNotSentYet) {
           this._log(`initial send ${index}`);
 
-          this._sendToUplink(segment);
+          bytesSent += this._sendToUplink(segment);
           item.sent = true;
           item.sentAt = new Date();
         } else if (itemIsSentButNoAckForLongTime) {
           this._log(`timeout send ${index}`);
 
-          this._sendToUplink(segment);
+          bytesSent += this._sendToUplink(segment);
         } else if (itemIsSentButLost) {
           this._log(`lost(dup ack) resend ${index}`);
 
-          this._sendToUplink(segment);
+          bytesSent += this._sendToUplink(segment);
           return false;
         }
       });
+
+      return bytesSent;
     }
 
     _sendToUplink(segment) {
       const buffer = this._serializeSegment(segment);
 
       this.uplink.push(buffer);
+
+      return buffer.byteLength;
     }
 
     _serializeSegment(segment) {
@@ -417,7 +422,6 @@ const {Socket} = (function () {
     constructor(name) {
       this.transceiver = new Transceiver({
         name: name,
-        timeout: 3000,
         windowSize: 4
       });
     }
