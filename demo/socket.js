@@ -136,7 +136,7 @@ const {Socket} = (function () {
       this.uplink = new Stream();
 
       this._name = name;
-      this._timeout = timeout || 5000;
+      this._timeout = timeout || 2000;
       this._windowSize = windowSize || 4;
 
       this._sendBuffer = new WindowBuffer(this._windowSize);
@@ -419,7 +419,7 @@ const {Socket} = (function () {
     constructor(name) {
       this.transceiver = new Transceiver({
         name: name,
-        timeout: 5000,
+        timeout: 2000,
         windowSize: 4
       });
     }

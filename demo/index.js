@@ -9,26 +9,6 @@ if (urlParams.get('profile') != null && quietProfiles[urlParams.get('profile')] 
   alert(`[${urlParams.get('profile')}] 프로파일이 없어 cable-64k가 사용됩니다.`);
 }
 
-async function sleep(millis) {
-  return new Promise((res, rej) => setTimeout(() => res(), millis));
-}
-
-function splitString(str, N) {
-  const arr = [];
-
-  for (let i = 0; i < str.length; i += N) {
-    arr.push(str.substring(i, i + N));
-  }
-
-  return arr;
-}
-
-function decode(buf) {
-  return [...new Uint8Array(buf)].map((x) => String.fromCharCode(x)).join('');
-}
-
-let currentFile;
-
 async function main() {
   const quiet = await new Quiet(
     audioContext,
@@ -37,12 +17,24 @@ async function main() {
 
   const socket = new Socket('Alpha');
 
+  let currentFile;
+
   async function sendText(text) {
     const unescaped = btoa(unescape(encodeURIComponent(text)));
     await sendJson({type: 'text', text: unescaped});
   }
 
   async function sendFile(file) {
+    function splitString(str, N) {
+      const arr = [];
+
+      for (let i = 0; i < str.length; i += N) {
+        arr.push(str.substring(i, i + N));
+      }
+
+      return arr;
+    }
+
     const reader = new FileReader();
 
     reader.onload = async (e) => {
@@ -97,7 +89,7 @@ async function main() {
     await socket.bind(quiet);
 
     socket.listen((message) => {
-      const parsed = JSON.parse(decode(message));
+      const parsed = JSON.parse(new TextDecoder().decode(message));
       const {type} = parsed;
 
       switch (type) {
