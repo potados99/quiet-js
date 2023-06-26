@@ -208,7 +208,7 @@ const {Socket} = (function () {
         };
 
         const itemIsNotSentYet = !item.sent;
-        const itemIsSentButNoAckForLongTime = item.sent && !item.ackReceived && (new Date() - item.sentAt) > 5000;
+        const itemIsSentButNoAckForLongTime = item.sent && !item.ackReceived && (new Date() - item.sentAt) > this._timeout;
         const itemIsSentButLost = item.sent && !item.ackReceived && item.requestedFor > 1;
 
         if (itemIsNotSentYet) {
