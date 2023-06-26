@@ -1,565 +1,612 @@
-const log = (...args) => console.log(...args);
-const error = (...args) => console.error(...args);
+const {Quiet, quietProfiles} = (function () {
+  const log = (...args) => console.log(...args);
+  const error = (...args) => console.error(...args);
 
-const scopedEval = (scope, script) => Function('"use strict"; ' + script).bind(scope)();
-getSharedScripts().forEach(s => window[s.name] = scopedEval(this, s.content));
+  /**
+   * 스트링 리터럴로 주어진 함수 본문을 특정 스코프 안에서 실행합니다.
+   *
+   * 여기에서는 공통 함수와 변수를 반환하는 함수 본문 스트링을 실행하여
+   * 참조 가능한 심볼로 만들기 위해 사용합니다.
+   */
+  const scopedEval = (scope, script) => Function('"use strict"; ' + script).bind(scope)();
+  getSharedScripts().forEach(s => window[s.name] = scopedEval(this, s.content));
 
-class Quiet {
-  constructor(audioContext, profile) {
-    this.audioContext = audioContext;
-    this.profile = profile;
-  }
+  /**
+   * Quiet에 적용할 수 있는 프로파일의 모음입니다.
+   * 케이블 연결을 사용한다면 'cable-64k'를 사용하는 것이 가장 좋습니다.
+   */
+  const quietProfiles = {
+    audible: {
+      checksum_scheme: "crc32",
+      inner_fec_scheme: "v27",
+      outer_fec_scheme: "none",
+      mod_scheme: "gmsk",
+      frame_length: 25,
+      modulation: {
+        center_frequency: 4200,
+        gain: 0.15
+      },
+      interpolation: {
+        shape: "kaiser",
+        samples_per_symbol: 10,
+        symbol_delay: 4,
+        excess_bandwidth: 0.35
+      },
+      encoder_filters: {
+        dc_filter_alpha: 0.01
+      },
+      resampler: {
+        delay: 13,
+        bandwidth: 0.45,
+        attenuation: 60,
+        filter_bank_size: 64
+      }
+    },
+    "audible-7k-channel-0": {
+      mod_scheme: "arb16opt",
+      checksum_scheme: "crc32",
+      inner_fec_scheme: "v29",
+      outer_fec_scheme: "rs8",
+      frame_length: 600,
+      modulation: {
+        center_frequency: 9200,
+        gain: 0.01
+      },
+      interpolation: {
+        shape: "kaiser",
+        samples_per_symbol: 6,
+        symbol_delay: 4,
+        excess_bandwidth: 0.31
+      },
+      encoder_filters: {
+        dc_filter_alpha: 0.01
+      },
+      resampler: {
+        delay: 13,
+        bandwidth: 0.45,
+        attenuation: 60,
+        filter_bank_size: 64
+      },
+      ofdm: {
+        num_subcarriers: 48,
+        cyclic_prefix_length: 8,
+        taper_length: 4,
+        left_band: 0,
+        right_band: 0
+      }
+    },
+    "audible-7k-channel-1": {
+      mod_scheme: "arb16opt",
+      checksum_scheme: "crc32",
+      inner_fec_scheme: "v29",
+      outer_fec_scheme: "rs8",
+      frame_length: 600,
+      modulation: {
+        center_frequency: 15500,
+        gain: 0.01
+      },
+      interpolation: {
+        shape: "kaiser",
+        samples_per_symbol: 6,
+        symbol_delay: 4,
+        excess_bandwidth: 0.31
+      },
+      encoder_filters: {
+        dc_filter_alpha: 0.01
+      },
+      resampler: {
+        delay: 13,
+        bandwidth: 0.45,
+        attenuation: 60,
+        filter_bank_size: 64
+      },
+      ofdm: {
+        num_subcarriers: 48,
+        cyclic_prefix_length: 8,
+        taper_length: 4,
+        left_band: 0,
+        right_band: 0
+      }
+    },
+    "cable-64k": {
+      mod_scheme: "qam1024",
+      checksum_scheme: "crc32",
+      inner_fec_scheme: "v27p23",
+      outer_fec_scheme: "rs8",
+      frame_length: 1500,
+      modulation: {
+        center_frequency: 10200,
+        gain: 0.09
+      },
+      interpolation: {
+        shape: "kaiser",
+        samples_per_symbol: 2,
+        symbol_delay: 4,
+        excess_bandwidth: 0.35
+      },
+      encoder_filters: {
+        dc_filter_alpha: 0.03
+      },
+      resampler: {
+        delay: 13,
+        bandwidth: 0.45,
+        attenuation: 60,
+        filter_bank_size: 64
+      },
+      ofdm: {
+        num_subcarriers: 128,
+        cyclic_prefix_length: 16,
+        taper_length: 8,
+        left_band: 6,
+        right_band: 12
+      }
+    },
+    "hello-world": {
+      mod_scheme: "gmsk",
+      checksum_scheme: "crc32",
+      inner_fec_scheme: "v27",
+      outer_fec_scheme: "none",
+      frame_length: 25,
+      modulation: {
+        center_frequency: 4400,
+        gain: 0.08
+      },
+      interpolation: {
+        shape: "kaiser",
+        samples_per_symbol: 20,
+        symbol_delay: 4,
+        excess_bandwidth: 0.38
+      },
+      encoder_filters: {
+        dc_filter_alpha: 0.01
+      },
+      resampler: {
+        delay: 13,
+        bandwidth: 0.45,
+        attenuation: 60,
+        filter_bank_size: 64
+      }
+    },
+    ultrasonic: {
+      mod_scheme: "gmsk",
+      checksum_scheme: "crc32",
+      inner_fec_scheme: "v27",
+      outer_fec_scheme: "none",
+      frame_length: 34,
+      modulation: {
+        center_frequency: 19000,
+        gain: 0.02
+      },
+      interpolation: {
+        shape: "rrcos",
+        samples_per_symbol: 14,
+        symbol_delay: 4,
+        excess_bandwidth: 0.35
+      },
+      encoder_filters: {
+        dc_filter_alpha: 0.01
+      },
+      resampler: {
+        delay: 13,
+        bandwidth: 0.45,
+        attenuation: 60,
+        filter_bank_size: 64
+      }
+    },
+    "ultrasonic-3600": {
+      ofdm: {
+        num_subcarriers: 64,
+        cyclic_prefix_length: 20,
+        taper_length: 8,
+        left_band: 4,
+        right_band: 13
+      },
+      mod_scheme: "V29",
+      checksum_scheme: "crc8",
+      inner_fec_scheme: "v27",
+      outer_fec_scheme: "none",
+      frame_length: 550,
+      modulation: {
+        center_frequency: 18500,
+        gain: 0.01
+      },
+      interpolation: {
+        shape: "kaiser",
+        samples_per_symbol: 7,
+        symbol_delay: 4,
+        excess_bandwidth: 0.33
+      },
+      encoder_filters: {
+        dc_filter_alpha: 0.01
+      },
+      resampler: {
+        delay: 13,
+        bandwidth: 0.45,
+        attenuation: 60,
+        filter_bank_size: 64
+      }
+    },
+    "ultrasonic-whisper": {
+      mod_scheme: "gmsk",
+      checksum_scheme: "crc32",
+      inner_fec_scheme: "v27",
+      outer_fec_scheme: "none",
+      frame_length: 16,
+      modulation: {
+        center_frequency: 19500,
+        gain: 0.01
+      },
+      interpolation: {
+        shape: "rrcos",
+        samples_per_symbol: 30,
+        symbol_delay: 4,
+        excess_bandwidth: 0.35
+      },
+      encoder_filters: {
+        dc_filter_alpha: 0.01
+      },
+      resampler: {
+        delay: 13,
+        bandwidth: 0.45,
+        attenuation: 60,
+        filter_bank_size: 64
+      }
+    }
+  };
 
-  async init() {
-    const {module, instance} = await getQuietAssembly();
-
-    this.instance = instance;
-
-    if (typeof window !== 'undefined') {
-      const {audioWorklet} = this.audioContext;
-      await audioWorklet.addModule(getWorkletProcessorUri());
-
-      this.quietProcessorNode = new AudioWorkletNode(this.audioContext, 'quiet-receiver-worklet', {
-        processorOptions: {
-          sharedScripts: getSharedScripts(),
-
-          quietModule: module,
-          profile: this.profile,
-          sampleRate: this.audioContext.sampleRate,
-        },
-      });
+  /**
+   * Quiet 구현체의 JS 바인딩입니다.
+   *
+   * 기본적으로 데이터 링크 계층을 담당하며,
+   * 페이로드가 클 경우 fragmentation 또한 도와줍니다.
+   * 즉, 발신자와 수신자 사이의 임의 크기의 Uint8Array 전달을 책임집니다.
+   */
+  class Quiet {
+    constructor(audioContext, profile) {
+      this.audioContext = audioContext;
+      this.profile = profile;
     }
 
-    return this;
-  }
+    async init() {
+      const {module, instance} = await getQuietAssembly();
 
-  async transmit({payload, clampFrame}) {
-    (
-      await new Transmitter(this.audioContext, this.instance)
-        .selectProfile(this.profile, clampFrame)
-        .transmit(payload)
-    )
-      .destroy();
-  }
+      this.instance = instance;
 
-  async receive(onReceive) {
-    await new Receiver(
-      this.audioContext,
-      await getSpeakerStream(),
-      this.quietProcessorNode,
-      onReceive
-    ).receive();
-  }
-}
+      if (typeof window !== 'undefined') {
+        const {audioWorklet} = this.audioContext;
+        await audioWorklet.addModule(getWorkletProcessorUri());
 
-class Transmitter {
-  constructor(audioContext, instance) {
-    this.destroyed = false;
-    this.audioContext = audioContext;
-    this.instance = instance;
+        this.quietProcessorNode = new AudioWorkletNode(this.audioContext, 'quiet-receiver-worklet', {
+          processorOptions: {
+            sharedScripts: getSharedScripts(),
 
-    this.sampleBufferSize = window['utils'].sampleBufferSize;
-    this.resumeIfSuspended = window['utils'].resumeIfSuspended;
-    this.chunkBuffer = window['utils'].chunkBuffer;
-    this.concatenate = window['utils'].concatenate;
-    this.allocateArrayOnStack = window['utils'].allocateArrayOnStack;
-    this.allocateStringOnStack = window['utils'].allocateStringOnStack;
-    this.mallocArray = window['utils'].mallocArray;
-    this.waitUntil = window['utils'].waitUntil;
-  }
-
-  selectProfile(profile, clampFrame) {
-    const stack = this.instance.exports.stackSave();
-
-    const cProfiles = this.allocateStringOnStack(this.instance, JSON.stringify({profile}));
-    const cProfile = this.allocateStringOnStack(this.instance, 'profile');
-
-    const quietEncoderOptions = this
-      .instance
-      .exports
-      .quiet_encoder_profile_str(cProfiles, cProfile);
-
-    this.encoder = this
-      .instance
-      .exports
-      .quiet_encoder_create(quietEncoderOptions, this.audioContext.sampleRate);
-
-    this.instance.exports.free(quietEncoderOptions);
-
-    this.frameLength = clampFrame
-      ? this.instance.exports.quiet_encoder_clamp_frame_len(this.encoder, this.sampleBufferSize)
-      : this.instance.exports.quiet_encoder_get_frame_len(this.encoder);
-
-    this.samples = this.mallocArray(this.sampleBufferSize, this.instance);
-
-    this.instance.exports.stackRestore(stack);
-    return this;
-  }
-
-  async transmit(buf) {
-    const stack = this.instance.exports.stackSave();
-
-    this.resumeIfSuspended(this.audioContext);
-
-    const fragments = this.buildFragments(buf);
-
-    let t = this.audioContext.currentTime;
-    for (const fragment of fragments) {
-      const framePointer = this.allocateArrayOnStack(this.instance, new Uint8Array(fragment));
-      this.instance.exports.quiet_encoder_send(this.encoder, framePointer, fragment.byteLength);
-      const written = this.instance.exports.quiet_encoder_emit(
-        this.encoder,
-        this.samples.pointer,
-        this.sampleBufferSize,
-      );
-
-      const audioBuffer = this
-        .audioContext
-        .createBuffer(1, written, this.audioContext.sampleRate);
-
-      for (let i = written; i < this.sampleBufferSize; i += 1) {
-        this.samples.view[i] = 0;
+            quietModule: module,
+            profile: this.profile,
+            sampleRate: this.audioContext.sampleRate,
+          },
+        });
       }
 
-      audioBuffer.copyToChannel(this.samples.view.slice(0, written), 0, 0);
-
-      const audioBufferNode = new AudioBufferSourceNode(this.audioContext);
-      audioBufferNode.buffer = audioBuffer;
-      audioBufferNode.connect(this.audioContext.destination);
-      audioBufferNode.start(t);
-      t += audioBuffer.duration;
-
-      await this.waitUntil(audioBuffer.duration);
+      return this;
     }
 
-    this.instance.exports.stackRestore(stack);
+    async transmit({payload, clampFrame}) {
+      (
+          await new Transmitter(this.audioContext, this.instance)
+              .selectProfile(this.profile, clampFrame)
+              .transmit(payload)
+      )
+          .destroy();
+    }
 
-    return this;
+    async receive(onReceive) {
+      await new Receiver(
+          this.audioContext,
+          await getSpeakerStream(),
+          this.quietProcessorNode,
+          onReceive
+      ).receive();
+    }
   }
 
-  buildFragments(buf) {
-    const payloads = this.chunkBuffer(buf, this.frameLength-4/*header*/);
+  /**
+   * 전송을 담당하는 구현체입니다.
+   * 페이로드(패킷)을 조각내어
+   * 여러 프레임에 실어서 보냅니다.
+   */
+  class Transmitter {
+    constructor(audioContext, instance) {
+      this.destroyed = false;
+      this.audioContext = audioContext;
+      this.instance = instance;
 
-    const fragmentIdentifier = new Date().getTime() & 0xFFFF;
-
-    const fragments = [];
-
-    let index = 0;
-    let offset = 0;
-
-    for (const fragmentPayload of payloads) {
-      const moreFragments = (index < payloads.length-1 ? 1 : 0) << 15;
-      const fragmentOffset = offset;
-      const flagAndOffset = moreFragments | fragmentOffset;
-
-      const header = Uint8Array.of(
-        (fragmentIdentifier & 0xFF00) >> 8,
-        (fragmentIdentifier & 0x00FF) >> 0,
-        (flagAndOffset & 0xFF00) >> 8,
-        (flagAndOffset & 0x00FF) >> 0
-      );
-
-      const fragment = this.concatenate(Uint8Array, header, fragmentPayload);
-      fragments.push(fragment);
-
-      log(`Built fragment packet at offset ${fragmentOffset}`);
-
-      index++;
-      offset += fragmentPayload.byteLength;
+      this.sampleBufferSize = window['utils'].sampleBufferSize;
+      this.resumeIfSuspended = window['utils'].resumeIfSuspended;
+      this.chunkBuffer = window['utils'].chunkBuffer;
+      this.concatenate = window['utils'].concatenate;
+      this.allocateArrayOnStack = window['utils'].allocateArrayOnStack;
+      this.allocateStringOnStack = window['utils'].allocateStringOnStack;
+      this.mallocArray = window['utils'].mallocArray;
+      this.waitUntil = window['utils'].waitUntil;
     }
 
-    return fragments;
+    selectProfile(profile, clampFrame) {
+      const stack = this.instance.exports.stackSave();
+
+      const cProfiles = this.allocateStringOnStack(this.instance, JSON.stringify({profile}));
+      const cProfile = this.allocateStringOnStack(this.instance, 'profile');
+
+      const quietEncoderOptions = this
+          .instance
+          .exports
+          .quiet_encoder_profile_str(cProfiles, cProfile);
+
+      this.encoder = this
+          .instance
+          .exports
+          .quiet_encoder_create(quietEncoderOptions, this.audioContext.sampleRate);
+
+      this.instance.exports.free(quietEncoderOptions);
+
+      this.frameLength = clampFrame
+          ? this.instance.exports.quiet_encoder_clamp_frame_len(this.encoder, this.sampleBufferSize)
+          : this.instance.exports.quiet_encoder_get_frame_len(this.encoder);
+
+      this.samples = this.mallocArray(this.sampleBufferSize, this.instance);
+
+      this.instance.exports.stackRestore(stack);
+      return this;
+    }
+
+    async transmit(buf) {
+      const stack = this.instance.exports.stackSave();
+
+      this.resumeIfSuspended(this.audioContext);
+
+      const fragments = this._buildFragments(buf);
+
+      let t = this.audioContext.currentTime;
+      for (const fragment of fragments) {
+        const framePointer = this.allocateArrayOnStack(this.instance, new Uint8Array(fragment));
+        this.instance.exports.quiet_encoder_send(this.encoder, framePointer, fragment.byteLength);
+        const written = this.instance.exports.quiet_encoder_emit(
+            this.encoder,
+            this.samples.pointer,
+            this.sampleBufferSize,
+        );
+
+        const audioBuffer = this
+            .audioContext
+            .createBuffer(1, written, this.audioContext.sampleRate);
+
+        for (let i = written; i < this.sampleBufferSize; i += 1) {
+          this.samples.view[i] = 0;
+        }
+
+        audioBuffer.copyToChannel(this.samples.view.slice(0, written), 0, 0);
+
+        const audioBufferNode = new AudioBufferSourceNode(this.audioContext);
+        audioBufferNode.buffer = audioBuffer;
+        audioBufferNode.connect(this.audioContext.destination);
+        audioBufferNode.start(t);
+        t += audioBuffer.duration;
+
+        await this.waitUntil(audioBuffer.duration);
+      }
+
+      this.instance.exports.stackRestore(stack);
+
+      return this;
+    }
+
+    _buildFragments(buf) {
+      const payloads = this.chunkBuffer(buf, this.frameLength-4/*header*/);
+
+      const fragmentIdentifier = new Date().getTime() & 0xFFFF;
+
+      const fragments = [];
+
+      let index = 0;
+      let offset = 0;
+
+      for (const fragmentPayload of payloads) {
+        const moreFragments = (index < payloads.length-1 ? 1 : 0) << 15;
+        const fragmentOffset = offset;
+        const flagAndOffset = moreFragments | fragmentOffset;
+
+        const header = Uint8Array.of(
+            (fragmentIdentifier & 0xFF00) >> 8,
+            (fragmentIdentifier & 0x00FF) >> 0,
+            (flagAndOffset & 0xFF00) >> 8,
+            (flagAndOffset & 0x00FF) >> 0
+        );
+
+        const fragment = this.concatenate(Uint8Array, header, fragmentPayload);
+        fragments.push(fragment);
+
+        log(`Built fragment packet at offset ${fragmentOffset}`);
+
+        index++;
+        offset += fragmentPayload.byteLength;
+      }
+
+      return fragments;
+    }
+
+    destroy() {
+      if (!this.destroyed) {
+        this.instance.exports.free(this.samples.pointer);
+        this.instance.exports.quiet_encoder_destroy(this.encoder);
+        this.destroyed = true;
+      }
+      return this;
+    }
   }
 
-  destroy() {
-    if (!this.destroyed) {
-      this.instance.exports.free(this.samples.pointer);
-      this.instance.exports.quiet_encoder_destroy(this.encoder);
-      this.destroyed = true;
-    }
-    return this;
-  }
-}
+  /**
+   * 수신을 담당하는 구현체입니다.
+   * 여러 프레임에 나뉘어 순서대로 실려 온 조각을 모아
+   * 하나의 패킷으로 복구해 돌려줍니다.
+   */
+  class Receiver {
+    constructor(audioContext, stream, quietProcessorNode, onReceive) {
+      this.audioContext = audioContext;
+      this.stream = stream;
+      this.quietProcessorNode = quietProcessorNode;
+      this.onReceive = onReceive;
 
-class Receiver {
-  constructor(audioContext, stream, quietProcessorNode, onReceive) {
-    this.audioContext = audioContext;
-    this.stream = stream;
-    this.quietProcessorNode = quietProcessorNode;
-    this.onReceive = onReceive;
+      this.resumeIfSuspended = window['utils'].resumeIfSuspended;
+      this.concatenate = window['utils'].concatenate;
 
-    this.resumeIfSuspended = window['utils'].resumeIfSuspended;
-    this.concatenate = window['utils'].concatenate;
-
-    this.fragments = new Map();
-  }
-
-  async receive() {
-    const audioStream = this.stream || await getMicStream();
-
-    const audioInput = this.audioContext.createMediaStreamSource(audioStream);
-    audioInput.connect(this.quietProcessorNode);
-    this.quietProcessorNode.port.onmessage = (e) => this.onMessage(e);
-
-    this.resumeIfSuspended(this.audioContext);
-  }
-
-  onMessage(e) {
-    const frameData = new Uint8Array(e.data.value);
-    const packet = this.parsePacket(frameData);
-
-    this.saveFragment(packet);
-
-    if (packet.offset === 0 && !packet.more) {
-      log('single non fragmented packet arrived.');
-    }
-    else if (packet.offset === 0 && packet.more) {
-      log('start of fragmented packets arrived.');
-    }
-    else if (packet.offset > 0 && !packet.more) {
-      log('end of fragmented packets arrived.');
-    }
-    else if (packet.offset > 0 && packet.more) {
-      log('middle of fragmented packets arrived');
+      this.fragments = new Map();
     }
 
-    const readyToEmit = !packet.more;
+    async receive() {
+      const audioStream = this.stream || await getMicStream();
 
-    if (readyToEmit) {
-      try {
-        const assembledData = this.reassembleFragments(packet.identifier);
-        this.onReceive(assembledData);
-      } catch (e) {
-        error(e);
+      const audioInput = this.audioContext.createMediaStreamSource(audioStream);
+      audioInput.connect(this.quietProcessorNode);
+      this.quietProcessorNode.port.onmessage = (e) => this._onMessage(e);
+
+      this.resumeIfSuspended(this.audioContext);
+    }
+
+    _onMessage(e) {
+      const frameData = new Uint8Array(e.data.value);
+      const packet = this._parsePacket(frameData);
+
+      this._saveFragment(packet);
+
+      if (packet.offset === 0 && !packet.more) {
+        log('single non fragmented packet arrived.');
+      }
+      else if (packet.offset === 0 && packet.more) {
+        log('start of fragmented packets arrived.');
+      }
+      else if (packet.offset > 0 && !packet.more) {
+        log('end of fragmented packets arrived.');
+      }
+      else if (packet.offset > 0 && packet.more) {
+        log('middle of fragmented packets arrived');
+      }
+
+      const readyToEmit = !packet.more;
+
+      if (readyToEmit) {
+        try {
+          const assembledData = this._reassembleFragments(packet.identifier);
+          this.onReceive(assembledData);
+        } catch (e) {
+          error(e);
+        }
       }
     }
-  }
 
-  parsePacket(frameData)  {
-    const header = frameData.slice(0, 4); // first four bytes are header.
-    const body = frameData.slice(4);
+    _parsePacket(frameData)  {
+      const header = frameData.slice(0, 4); // first four bytes are header.
+      const body = frameData.slice(4);
 
-    const fragmentIdentifier = new DataView(header.slice(0, 2).buffer, 0).getUint16(0); // first two bytes represent identifier
-    const flagAndOffset = new DataView(header.slice(2, 4).buffer, 0).getUint16(0); // last two bytes: 1 bit for flag, others for offset.
+      const fragmentIdentifier = new DataView(header.slice(0, 2).buffer, 0).getUint16(0); // first two bytes represent identifier
+      const flagAndOffset = new DataView(header.slice(2, 4).buffer, 0).getUint16(0); // last two bytes: 1 bit for flag, others for offset.
 
-    const moreFragments = (flagAndOffset & 0b1000_0000_0000_0000) >> 15;
-    const fragmentOffset = flagAndOffset & 0b0111_1111_1111_1111;
+      const moreFragments = (flagAndOffset & 0b1000_0000_0000_0000) >> 15;
+      const fragmentOffset = flagAndOffset & 0b0111_1111_1111_1111;
 
-    return {
-      identifier: fragmentIdentifier,
-      more: moreFragments > 0,
-      offset: fragmentOffset,
-      data: body
+      return {
+        identifier: fragmentIdentifier,
+        more: moreFragments > 0,
+        offset: fragmentOffset,
+        data: body
+      };
+    }
+
+    _saveFragment(packet) {
+      this.fragments[packet.identifier] = this.fragments[packet.identifier] || [];
+
+      const thisFragments = this.fragments[packet.identifier];
+
+      if (thisFragments.length === 0) {
+        thisFragments.push(packet);
+      } else {
+        const lastFragment = thisFragments[thisFragments.length-1];
+        const nextFragmentStartsAt = lastFragment ? (lastFragment.offset + lastFragment.data.byteLength) : 0;
+
+        if (packet.offset !== nextFragmentStartsAt) {
+          error(`Expected offset at ${nextFragmentStartsAt}, but received ${packet.offset}.`);
+          return;
+        }
+
+        thisFragments.push(packet);
+      }
+    };
+
+    _reassembleFragments(identifier) {
+      const thisFragments = this.fragments[identifier] || [];
+      this.fragments.delete(identifier);
+
+      const data = [];
+      let offset = 0;
+
+      for (const fragment of thisFragments) {
+        if (offset !== fragment.offset) {
+          throw new Error(`Missing packet: expected packet at offset ${offset}`);
+        }
+        data.push(fragment.data);
+        offset = fragment.offset + fragment.data.byteLength;
+      }
+
+      return this.concatenate(Uint8Array, ...data).buffer;
     };
   }
 
-  saveFragment(packet) {
-    this.fragments[packet.identifier] = this.fragments[packet.identifier] || [];
-
-    const thisFragments = this.fragments[packet.identifier];
-
-    if (thisFragments.length === 0) {
-      thisFragments.push(packet);
-    } else {
-      const lastFragment = thisFragments[thisFragments.length-1];
-      const nextFragmentStartsAt = lastFragment ? (lastFragment.offset + lastFragment.data.byteLength) : 0;
-
-      if (packet.offset !== nextFragmentStartsAt) {
-        error(`Expected offset at ${nextFragmentStartsAt}, but received ${packet.offset}.`);
-        return;
-      }
-
-      thisFragments.push(packet);
-    }
-  };
-
-  reassembleFragments(identifier) {
-    const thisFragments = this.fragments[identifier] || [];
-    this.fragments.delete(identifier);
-
-    const data = [];
-    let offset = 0;
-
-    for (const fragment of thisFragments) {
-      if (offset !== fragment.offset) {
-        throw new Error(`Missing packet: expected packet at offset ${offset}`);
-      }
-      data.push(fragment.data);
-      offset = fragment.offset + fragment.data.byteLength;
-    }
-
-    return this.concatenate(Uint8Array, ...data).buffer;
-  };
-}
-
-async function getMicStream() {
-  return await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: false,
-    },
-  });
-}
-
-async function getSpeakerStream() {
-  const speaker = new MediaStream();
-
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: true ,
-    audio: true
-  });
-
-  speaker.addTrack(stream.getAudioTracks()[0].clone());
-  // stopping and removing the video track to enhance the performance
-  stream.getVideoTracks()[0].stop();
-  stream.removeTrack(stream.getVideoTracks()[0]);
-
-  return speaker;
-}
-
-const quietProfiles = {
-  audible: {
-    checksum_scheme: "crc32",
-    inner_fec_scheme: "v27",
-    outer_fec_scheme: "none",
-    mod_scheme: "gmsk",
-    frame_length: 25,
-    modulation: {
-      center_frequency: 4200,
-      gain: 0.15
-    },
-    interpolation: {
-      shape: "kaiser",
-      samples_per_symbol: 10,
-      symbol_delay: 4,
-      excess_bandwidth: 0.35
-    },
-    encoder_filters: {
-      dc_filter_alpha: 0.01
-    },
-    resampler: {
-      delay: 13,
-      bandwidth: 0.45,
-      attenuation: 60,
-      filter_bank_size: 64
-    }
-  },
-  "audible-7k-channel-0": {
-    mod_scheme: "arb16opt",
-    checksum_scheme: "crc32",
-    inner_fec_scheme: "v29",
-    outer_fec_scheme: "rs8",
-    frame_length: 600,
-    modulation: {
-      center_frequency: 9200,
-      gain: 0.01
-    },
-    interpolation: {
-      shape: "kaiser",
-      samples_per_symbol: 6,
-      symbol_delay: 4,
-      excess_bandwidth: 0.31
-    },
-    encoder_filters: {
-      dc_filter_alpha: 0.01
-    },
-    resampler: {
-      delay: 13,
-      bandwidth: 0.45,
-      attenuation: 60,
-      filter_bank_size: 64
-    },
-    ofdm: {
-      num_subcarriers: 48,
-      cyclic_prefix_length: 8,
-      taper_length: 4,
-      left_band: 0,
-      right_band: 0
-    }
-  },
-  "audible-7k-channel-1": {
-    mod_scheme: "arb16opt",
-    checksum_scheme: "crc32",
-    inner_fec_scheme: "v29",
-    outer_fec_scheme: "rs8",
-    frame_length: 600,
-    modulation: {
-      center_frequency: 15500,
-      gain: 0.01
-    },
-    interpolation: {
-      shape: "kaiser",
-      samples_per_symbol: 6,
-      symbol_delay: 4,
-      excess_bandwidth: 0.31
-    },
-    encoder_filters: {
-      dc_filter_alpha: 0.01
-    },
-    resampler: {
-      delay: 13,
-      bandwidth: 0.45,
-      attenuation: 60,
-      filter_bank_size: 64
-    },
-    ofdm: {
-      num_subcarriers: 48,
-      cyclic_prefix_length: 8,
-      taper_length: 4,
-      left_band: 0,
-      right_band: 0
-    }
-  },
-  "cable-64k": {
-    mod_scheme: "qam1024",
-    checksum_scheme: "crc32",
-    inner_fec_scheme: "v27p23",
-    outer_fec_scheme: "rs8",
-    frame_length: 1500,
-    modulation: {
-      center_frequency: 10200,
-      gain: 0.09
-    },
-    interpolation: {
-      shape: "kaiser",
-      samples_per_symbol: 2,
-      symbol_delay: 4,
-      excess_bandwidth: 0.35
-    },
-    encoder_filters: {
-      dc_filter_alpha: 0.03
-    },
-    resampler: {
-      delay: 13,
-      bandwidth: 0.45,
-      attenuation: 60,
-      filter_bank_size: 64
-    },
-    ofdm: {
-      num_subcarriers: 128,
-      cyclic_prefix_length: 16,
-      taper_length: 8,
-      left_band: 6,
-      right_band: 12
-    }
-  },
-  "hello-world": {
-    mod_scheme: "gmsk",
-    checksum_scheme: "crc32",
-    inner_fec_scheme: "v27",
-    outer_fec_scheme: "none",
-    frame_length: 25,
-    modulation: {
-      center_frequency: 4400,
-      gain: 0.08
-    },
-    interpolation: {
-      shape: "kaiser",
-      samples_per_symbol: 20,
-      symbol_delay: 4,
-      excess_bandwidth: 0.38
-    },
-    encoder_filters: {
-      dc_filter_alpha: 0.01
-    },
-    resampler: {
-      delay: 13,
-      bandwidth: 0.45,
-      attenuation: 60,
-      filter_bank_size: 64
-    }
-  },
-  ultrasonic: {
-    mod_scheme: "gmsk",
-    checksum_scheme: "crc32",
-    inner_fec_scheme: "v27",
-    outer_fec_scheme: "none",
-    frame_length: 34,
-    modulation: {
-      center_frequency: 19000,
-      gain: 0.02
-    },
-    interpolation: {
-      shape: "rrcos",
-      samples_per_symbol: 14,
-      symbol_delay: 4,
-      excess_bandwidth: 0.35
-    },
-    encoder_filters: {
-      dc_filter_alpha: 0.01
-    },
-    resampler: {
-      delay: 13,
-      bandwidth: 0.45,
-      attenuation: 60,
-      filter_bank_size: 64
-    }
-  },
-  "ultrasonic-3600": {
-    ofdm: {
-      num_subcarriers: 64,
-      cyclic_prefix_length: 20,
-      taper_length: 8,
-      left_band: 4,
-      right_band: 13
-    },
-    mod_scheme: "V29",
-    checksum_scheme: "crc8",
-    inner_fec_scheme: "v27",
-    outer_fec_scheme: "none",
-    frame_length: 550,
-    modulation: {
-      center_frequency: 18500,
-      gain: 0.01
-    },
-    interpolation: {
-      shape: "kaiser",
-      samples_per_symbol: 7,
-      symbol_delay: 4,
-      excess_bandwidth: 0.33
-    },
-    encoder_filters: {
-      dc_filter_alpha: 0.01
-    },
-    resampler: {
-      delay: 13,
-      bandwidth: 0.45,
-      attenuation: 60,
-      filter_bank_size: 64
-    }
-  },
-  "ultrasonic-whisper": {
-    mod_scheme: "gmsk",
-    checksum_scheme: "crc32",
-    inner_fec_scheme: "v27",
-    outer_fec_scheme: "none",
-    frame_length: 16,
-    modulation: {
-      center_frequency: 19500,
-      gain: 0.01
-    },
-    interpolation: {
-      shape: "rrcos",
-      samples_per_symbol: 30,
-      symbol_delay: 4,
-      excess_bandwidth: 0.35
-    },
-    encoder_filters: {
-      dc_filter_alpha: 0.01
-    },
-    resampler: {
-      delay: 13,
-      bandwidth: 0.45,
-      attenuation: 60,
-      filter_bank_size: 64
-    }
+  /**
+   * 마이크로부터 샘플을 받아오는 MeidaStream을 가져옵니다.
+   *
+   * @returns {Promise<MediaStream>}
+   */
+  async function getMicStream() {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+      },
+    });
   }
-};
 
-function getSharedScripts() {
-  return [
-    {
-      name: 'utils',
-      content: `
+  /**
+   * 스피커로부터 샘플을 받아오는 MediaStream을 가져옵니다.
+   * 디버그 용도로 null terminal처럼 사용하기 좋습니다.
+   *
+   * @returns {Promise<MediaStream>}
+   */
+  async function getSpeakerStream() {
+    const speaker = new MediaStream();
+
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true ,
+      audio: true
+    });
+
+    speaker.addTrack(stream.getAudioTracks()[0].clone());
+    // stopping and removing the video track to enhance the performance
+    stream.getVideoTracks()[0].stop();
+    stream.removeTrack(stream.getVideoTracks()[0]);
+
+    return speaker;
+  }
+
+  /**
+   * 본 스크립트와 AudioWorkletProcessor 모두에서 사용되는
+   * 공통 스크립트를 반환합니다.
+   * AudioWorkletProcessor에서는 이 스크립트의 스코프에 접근할 수 없기 때문에,
+   * 이 함수가 반환하는 (스트링 형태의)스크립트를 eval하여 사용하게 됩니다.
+   *
+   * @returns {[{name: string, content: string},{name: string, content: string},{name: string, content: string}]}
+   */
+  function getSharedScripts() {
+    return [
+      {
+        name: 'utils',
+        content: `
 const sampleBufferSize = 16384;
 
 async function waitUntil(seconds) {
@@ -635,11 +682,11 @@ return {
   mallocArray
 };
     `
-    },
+      },
 
-    {
-      name: 'importObject',
-      content: `
+      {
+        name: 'importObject',
+        content: `
 const importObject = {
   env: {
     __sys_getpid: () => null,
@@ -656,11 +703,11 @@ const importObject = {
 
 return importObject;
 `
-    },
+      },
 
-    {
-      name: `RingBuffer`,
-      content: `
+      {
+        name: `RingBuffer`,
+        content: `
 class RingBuffer {
   /**
    * @constructor
@@ -757,17 +804,31 @@ class RingBuffer {
 
 return RingBuffer;    
 `
-    },
-  ];
-}
+      },
+    ];
+  }
 
-function getWorkletProcessorUri() {
-  const worklet = `
+  /**
+   * 수신을 담당하는 AudioWorkletProcessor를 로드할 수 있는
+   * Data URI를 가져옵니다.
+   * 해당 스크립트는 별도의 파일에 두는 것이 좋으나 로컬에서 로드할 수 없는 관계로,
+   * 이 함수 안에 스트링 리터럴의 형태로 임베드 하였습니다.
+   *
+   * @returns {string}
+   */
+  function getWorkletProcessorUri() {
+    const worklet = `
 class ReceiverWorklet extends AudioWorkletProcessor {
   constructor(options) {
     super();
     const { sharedScripts, quietModule, profile, sampleRate } = options.processorOptions;
 
+    /**
+     * 스트링 리터럴로 주어진 함수 본문을 특정 스코프 안에서 실행합니다.
+     *
+     * 여기에서는 공통 함수와 변수를 반환하는 함수 본문 스트링을 실행하여
+     * 참조 가능한 심볼로 만들기 위해 사용합니다.
+     */
     const scopedEval = (scope, script) => Function('"use strict"; ' + script).bind(scope)();
     sharedScripts.forEach(s => this[s.name] = scopedEval(this, s.content));
 
@@ -780,16 +841,16 @@ class ReceiverWorklet extends AudioWorkletProcessor {
     this.sampleRate = sampleRate;
     this.inputRingBuffer = new this.RingBuffer(this.sampleBufferSize, 1);
 
-    this.init();
+    this._init();
   }
 
-  async init() {
+  async _init() {
     this.instance = await WebAssembly.instantiate(this.quietModule, this.importObject);
-    await this.selectProfile(this.instance, this.profile);
+    await this._selectProfile(this.instance, this.profile);
     return this;
   }
 
-  async selectProfile(instance, profile) {
+  async _selectProfile(instance, profile) {
     const stack = instance.exports.stackSave();
 
     const cProfiles = this.allocateStringOnStack(instance, JSON.stringify({ profile }));
@@ -818,11 +879,11 @@ class ReceiverWorklet extends AudioWorkletProcessor {
       this.inputRingBuffer.pull([this.samples.view]);
 
       this.instance.exports.quiet_decoder_consume(
-        this.decoder, this.samples.pointer, this.sampleBufferSize,
+          this.decoder, this.samples.pointer, this.sampleBufferSize,
       );
 
       const read = this.instance.exports.quiet_decoder_recv(
-        this.decoder, this.frame, this.sampleBufferSize,
+          this.decoder, this.frame, this.sampleBufferSize,
       );
 
       if (read !== -1) {
@@ -844,14 +905,21 @@ class ReceiverWorklet extends AudioWorkletProcessor {
 registerProcessor('quiet-receiver-worklet', ReceiverWorklet);
   `;
 
-  return `data:text/javascript;base64,${btoa(worklet)}`;
-}
+    return `data:text/javascript;base64,${btoa(worklet)}`;
+  }
 
-async function getQuietAssembly() {
-  // https://github.com/moxon6/quiet-js/releases/tag/0.0.2-8
-  // https://stackoverflow.com/questions/51451456/how-to-directly-instantiate-webassembly-module-in-javascript
-  // https://stackoverflow.com/questions/4321500/how-to-insert-a-newline-character-after-every-200-characters-with-jquery
-  const encoded = `
+  /**
+   * Base64로 인코딩된 libquiet 웹 어셈블리를 가져옵니다.
+   * 어셈블리는 별도의 파일에 두는 것이 정석이나 로컬에서 로드할 수 없는 관계로,
+   * 스트링 리터럴로 변환하여 임베드 하였습니다.
+   *
+   * @returns {Promise<WebAssembly.WebAssemblyInstantiatedSource>} 웹 어셈블리 모듈과 인스턴스
+   */
+  async function getQuietAssembly() {
+    // https://github.com/moxon6/quiet-js/releases/tag/0.0.2-8
+    // https://stackoverflow.com/questions/51451456/how-to-directly-instantiate-webassembly-module-in-javascript
+    // https://stackoverflow.com/questions/4321500/how-to-insert-a-newline-character-after-every-200-characters-with-jquery
+    const encoded = `
 AGFzbQEAAAABhQVZYAF/AGABfwF/YAN/f38Bf2ACf38AYAJ/fwF/YAN/f38AYAR/f39/AGAAAX9gBH9/
 f38Bf2ABfQF9YAF/AX1gAABgBX9/f39/AGAFf399fX8AYAJ/fQBgBX9/f39/AX9gB39/f39/f38Bf2AF
 f35+fn4AYAF8AXxgBH9/fX8AYAJ9fQF9YAd/f39/f39/AGABfQF/YAZ/f39/f38Bf2ADf35/AX5gBn9/
@@ -6511,26 +6579,32 @@ AAD/////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAALjGAAA=
   `;
 
-  const importObject = window['importObject'];
+    const importObject = window['importObject'];
 
-  function asciiToBinary(str) {
-    if (typeof atob === 'function') {
-      // this works in the browser
-      return atob(str)
-    } else {
-      // this works in node
-      return new Buffer(str, 'base64').toString('binary');
+    function asciiToBinary(str) {
+      if (typeof atob === 'function') {
+        // this works in the browser
+        return atob(str)
+      } else {
+        // this works in node
+        return new Buffer(str, 'base64').toString('binary');
+      }
     }
+
+    function restore(encoded) {
+      var binaryString = asciiToBinary(encoded);
+      var bytes = new Uint8Array(binaryString.length);
+      for (var i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+
+    return await WebAssembly.instantiate(restore(encoded.replaceAll('\n', '')), importObject);
   }
 
-  function restore(encoded) {
-    var binaryString = asciiToBinary(encoded);
-    var bytes = new Uint8Array(binaryString.length);
-    for (var i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
-  }
-
-  return await WebAssembly.instantiate(restore(encoded.replaceAll('\n', '')), importObject);
-}
+  return {
+    Quiet,
+    quietProfiles
+  };
+})();
