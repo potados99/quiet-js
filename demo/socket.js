@@ -4,9 +4,11 @@ const {Socket} = (function () {
    * 페이로드와 상태를 함께 포함합니다.
    */
   class OutboundDataSegment {
-    constructor(seq, payload) {
+    constructor(seq, payload, onAcked) {
       this.seq = seq;
       this.payload = payload;
+      this.onAcked = onAcked;
+
       this.sent = false;
       this.sentAt = null;
       this.ackReceived = false;
@@ -134,6 +136,7 @@ const {Socket} = (function () {
       this.uplink = new Stream();
 
       this._name = name;
+      this._timeout = timeout || 5000;
       this._windowSize = windowSize || 4;
 
       this._sendBuffer = new WindowBuffer(this._windowSize);
@@ -142,8 +145,6 @@ const {Socket} = (function () {
 
       this._recvBuffer = new WindowBuffer(this._windowSize);
       this._payloadReceiveCallback = () => {};
-
-      this._finishTransmission = () => {};
     }
 
     /**
@@ -154,15 +155,13 @@ const {Socket} = (function () {
       this._payloadReceiveCallback = callback;
     }
 
-    /**
-     * 주어진 페이로드(여러 개)의 전송을 시작합니다.
-     * @param payloads 보낼 페이로드입니다. 배열 형태로 제시합니다.
-     * @returns {Promise<unknown>} 전송이 모두 끝나면(=모든 페이로드가 ack를 받으면) 완료되는 Promise를 반환합니다.
-     */
-    startTransmission(payloads) {
-      this._outbounds = payloads;
-
-      const promise = new Promise((res) => this._finishTransmission = res);
+    pushToOutboundBuffer(payload) {
+      const promise = new Promise((res) => {
+        this._outbounds.push({
+          payload,
+          onAcked: res
+        });
+      });
 
       this._fillSendBuffer();
       this._sendWindowInTimeout();
@@ -173,7 +172,9 @@ const {Socket} = (function () {
     _fillSendBuffer() {
       this._sendBuffer.forEachWindow((item, index) => {
         if (item == null && this._outbounds.length > 0) {
-          this._sendBuffer.set(index, new OutboundDataSegment(index, this._outbounds.shift()));
+          const {payload, onAcked} = this._outbounds.shift();
+
+          this._sendBuffer.set(index, new OutboundDataSegment(index, payload, onAcked));
 
           this._log(`fill buffer at seq ${index}.`);
         }
@@ -184,19 +185,18 @@ const {Socket} = (function () {
       clearTimeout(this._timeoutId);
 
       const send = () => {
-        const bytesSent = this._sendWindow();
+        this._sendWindow();
+
         this._timeoutId = setTimeout(() => {
           this._log(`timeout resend window`);
           send();
-        },5000 + Math.floor(bytesSent / 3)/*about 1 millisecond per 3 bytes*/);
+        }, this._timeout);
       };
 
       send();
     }
 
     _sendWindow() {
-      let bytesSent = 0;
-
       this._sendBuffer.forEachWindow((item, index) => {
         if (item == null) {
           return false;
@@ -214,30 +214,26 @@ const {Socket} = (function () {
         if (itemIsNotSentYet) {
           this._log(`initial send ${index}`);
 
-          bytesSent += this._sendToUplink(segment);
+          this._sendToUplink(segment);
           item.sent = true;
           item.sentAt = new Date();
         } else if (itemIsSentButNoAckForLongTime) {
           this._log(`timeout send ${index}`);
 
-          bytesSent += this._sendToUplink(segment);
+          this._sendToUplink(segment);
         } else if (itemIsSentButLost) {
           this._log(`lost(dup ack) resend ${index}`);
 
-          bytesSent += this._sendToUplink(segment);
+          this._sendToUplink(segment);
           return false;
         }
       });
-
-      return bytesSent;
     }
 
     _sendToUplink(segment) {
       const buffer = this._serializeSegment(segment);
 
       this.uplink.push(buffer);
-
-      return buffer.byteLength;
     }
 
     _serializeSegment(segment) {
@@ -290,6 +286,7 @@ const {Socket} = (function () {
       this._sendBuffer.forEachWindow((item, index) => {
         if (item) {
           if (index < ack) {
+            item.onAcked();
             item.ackReceived = true;
           } else if (index === ack) {
             item.requestedFor++;
@@ -300,10 +297,10 @@ const {Socket} = (function () {
       this._forwardSendWindowAsPossible();
 
       if (this._outbounds.length === 0 && this._sendBuffer.get(this._sendBuffer.windowStart) == null) {
-        this._log(`all sent! finish transmission.`);
+        this._log(`output buffer is empty! finish transmission.`);
 
         clearTimeout(this._timeoutId);
-        this._finishTransmission();
+
         return;
       }
 
@@ -422,6 +419,7 @@ const {Socket} = (function () {
     constructor(name) {
       this.transceiver = new Transceiver({
         name: name,
+        timeout: 5000,
         windowSize: 4
       });
     }
@@ -443,8 +441,8 @@ const {Socket} = (function () {
       this.transceiver.startListening(callback);
     }
 
-    async send(...payloads) {
-      await this.transceiver.startTransmission(payloads);
+    async send(payload) {
+      await this.transceiver.pushToOutboundBuffer(payload);
     }
   }
 

@@ -1,4 +1,4 @@
-const chunkSize = 1024;
+const chunkSize = 2500;
 const audioContext = new AudioContext();
 
 const queryString = window.location.search;
@@ -37,9 +37,9 @@ async function main() {
 
   const socket = new Socket('Alpha');
 
-  function sendText(text) {
+  async function sendText(text) {
     const unescaped = btoa(unescape(encodeURIComponent(text)));
-    sendJson({type: 'text', text: unescaped});
+    await sendJson({type: 'text', text: unescaped});
   }
 
   async function sendFile(file) {
@@ -55,8 +55,6 @@ async function main() {
         size: payload.length
       });
 
-      //await sleep(1000);
-
       const chunks = splitString(e.target.result, chunkSize);
 
       console.log(`${chunks.length} chunks.`);
@@ -67,13 +65,13 @@ async function main() {
       document.querySelector('#send-progress-container').setAttribute('style','display: flex');
 
       for (const chunk of chunks) {
-        //await sleep(1000);
-
+        // 매 세그먼트마다 기다리는, 사실상 window size 1
         await sendJson({
           type: 'file-body',
           seq: seq,
           chunk: chunk
         });
+
         sent += chunk.length;
         const progress = 100 * sent / payload.length;
 
