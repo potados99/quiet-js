@@ -302,7 +302,7 @@ const {Quiet, quietProfiles} = (function () {
     async receive(onReceive) {
       await new Receiver(
           this.audioContext,
-          await getSpeakerStream(),
+          window.debug && await getSpeakerStream(),
           this.quietProcessorNode,
           onReceive
       ).receive();
@@ -533,7 +533,7 @@ const {Quiet, quietProfiles} = (function () {
 
         if (packet.offset !== nextFragmentStartsAt) {
           error(`Expected offset at ${nextFragmentStartsAt}, but received ${packet.offset}.`);
-          return;
+          // missing but not discard
         }
 
         thisFragments.push(packet);
@@ -544,18 +544,23 @@ const {Quiet, quietProfiles} = (function () {
       const thisFragments = this.fragments[identifier] || [];
       this.fragments.delete(identifier);
 
-      const data = [];
-      let offset = 0;
-
-      for (const fragment of thisFragments) {
-        if (offset !== fragment.offset) {
-          throw new Error(`Missing packet: expected packet at offset ${offset}`);
-        }
-        data.push(fragment.data);
-        offset = fragment.offset + fragment.data.byteLength;
+      const lastFragment = thisFragments[thisFragments.length-1];
+      if (lastFragment != null && lastFragment.more) {
+        throw new Error(`Missing last packet.`);
       }
 
-      return this.concatenate(Uint8Array, ...data).buffer;
+      const data = [];
+      let nextFragmentStartsAt = 0;
+
+      for (const fragment of thisFragments) {
+        if (fragment.offset !== nextFragmentStartsAt) {
+          throw new Error(`Missing packet: expected packet at offset ${nextFragmentStartsAt}`);
+        }
+        data.push(fragment.data);
+        nextFragmentStartsAt = fragment.offset + fragment.data.byteLength;
+      }
+
+      return this.concatenate(Uint8Array, ...data);
     };
   }
 
@@ -823,12 +828,6 @@ class ReceiverWorklet extends AudioWorkletProcessor {
     super();
     const { sharedScripts, quietModule, profile, sampleRate } = options.processorOptions;
 
-    /**
-     * 스트링 리터럴로 주어진 함수 본문을 특정 스코프 안에서 실행합니다.
-     *
-     * 여기에서는 공통 함수와 변수를 반환하는 함수 본문 스트링을 실행하여
-     * 참조 가능한 심볼로 만들기 위해 사용합니다.
-     */
     const scopedEval = (scope, script) => Function('"use strict"; ' + script).bind(scope)();
     sharedScripts.forEach(s => this[s.name] = scopedEval(this, s.content));
 

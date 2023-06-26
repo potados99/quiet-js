@@ -18,6 +18,8 @@ async function main() {
     profile,
   ).init();
 
+  const socket = new Socket('Alpha');
+
   function sendText(text) {
     const unescaped = btoa(unescape(encodeURIComponent(text)));
     sendJson({type: 'text', text: unescaped});
@@ -40,14 +42,13 @@ async function main() {
   }
 
   function sendJson(json) {
-    quiet.transmit({
-      clampFrame: false,
-      payload: new TextEncoder().encode(JSON.stringify(json)),
-    });
+    socket.send(new TextEncoder().encode(JSON.stringify(json)));
   }
 
-  async function startReceiving() {
-    await quiet.receive((message) => {
+  async function start() {
+    await socket.bind(quiet);
+
+    socket.listen((message) => {
       const parsed = JSON.parse(decode(message));
       const {type} = parsed;
 
@@ -81,9 +82,9 @@ async function main() {
   const receivedFiles = document.querySelector('#received-files');
 
   document
-    .querySelector('#start-listening')
+    .querySelector('#start')
     .addEventListener('click', () => {
-      startReceiving().catch(alert);
+      start();
     });
 }
 
